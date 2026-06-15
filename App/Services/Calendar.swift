@@ -642,7 +642,7 @@ final class CalendarService: Service {
                 isAllDay = event.isAllDay
             }
 
-            var startDate = event.startDate
+            var startDate = event.startDate ?? Date()
             if case .string(let startDateStr) = arguments["start"],
                 let parsedStart = ISO8601DateFormatter.parsedLenientISO8601Date(
                     fromISO8601String: startDateStr
@@ -654,7 +654,7 @@ final class CalendarService: Service {
                 )
             }
 
-            var endDate = event.endDate
+            var endDate = event.endDate ?? startDate
             if case .string(let endDateStr) = arguments["end"],
                 let parsedEnd = ISO8601DateFormatter.parsedLenientISO8601Date(
                     fromISO8601String: endDateStr

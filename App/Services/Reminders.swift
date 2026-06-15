@@ -314,7 +314,8 @@ final class RemindersService: Service {
             inputSchema: .object(
                 properties: [
                     "identifier": .string(
-                        description: "Unique identifier of the reminder to update (the `@id` returned by reminders_fetch)"
+                        description:
+                            "Unique identifier of the reminder to update (the `@id` returned by reminders_fetch)"
                     ),
                     "title": .string(),
                     "due": .string(
@@ -432,7 +433,8 @@ final class RemindersService: Service {
             inputSchema: .object(
                 properties: [
                     "identifier": .string(
-                        description: "Unique identifier of the reminder to delete (the `@id` returned by reminders_fetch)"
+                        description:
+                            "Unique identifier of the reminder to delete (the `@id` returned by reminders_fetch)"
                     )
                 ],
                 required: ["identifier"],
