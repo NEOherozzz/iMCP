@@ -5,6 +5,7 @@ on:
         branches: ["main"]
     pull_request:
         branches: ["main"]
+    workflow_dispatch:
 
 permissions:
     contents: read
@@ -42,3 +43,46 @@ jobs:
 
             - name: Build
               run: xcodebuild -quiet -scheme iMCP -configuration Debug -destination "platform=macOS" build
+
+    # Produces a ready-to-run, unsigned/ad-hoc-signed iMCP.app for personal use
+    # (no Apple Developer account required). Download the "iMCP-app" artifact
+    # from the run summary. Trigger manually via the "Run workflow" button, or
+    # it runs automatically on every push to main.
+    package:
+        name: Package unsigned app for personal use
+        runs-on: macos-26
+        env:
+            DEVELOPER_DIR: "/Applications/Xcode_26.0.app/Contents/Developer"
+        timeout-minutes: 20
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v6
+
+            - name: Build (Debug, no code signing)
+              run: |
+                  set -euo pipefail
+                  xcodebuild \
+                    -scheme iMCP \
+                    -configuration Debug \
+                    -destination "platform=macOS" \
+                    -derivedDataPath build \
+                    CODE_SIGNING_ALLOWED=NO \
+                    build
+
+            - name: Ad-hoc sign and zip
+              run: |
+                  set -euo pipefail
+                  APP="build/Build/Products/Debug/iMCP.app"
+                  # Ad-hoc sign (identity "-") so the app has a stable code identity.
+                  # This keeps macOS Privacy permissions (Calendar, Reminders, ...)
+                  # granted across relaunches. No developer account is involved.
+                  codesign --force --deep --sign - "$APP"
+                  codesign --verify --verbose "$APP"
+                  ditto -c -k --sequesterRsrc --keepParent "$APP" iMCP.zip
+
+            - name: Upload app artifact
+              uses: actions/upload-artifact@v4
+              with:
+                  name: iMCP-app
+                  path: iMCP.zip
+                  if-no-files-found: error

@@ -17,7 +17,7 @@ and a [growing list of clients][mcp-clients] that support the
       <img src="Assets/calendar.svg" width="48" height="48" alt="" role="presentation"/>
     </th>
     <td><strong>Calendar</strong></td>
-    <td>View and manage calendar events, including creating new events with customizable settings like recurrence, alarms, and availability status.</td>
+    <td>View and manage calendar events — create new events with customizable settings like recurrence, alarms, and availability status, and update or delete existing events.</td>
   </tr>
   <tr>
     <th>
@@ -52,7 +52,7 @@ and a [growing list of clients][mcp-clients] that support the
       <img src="Assets/reminders.svg" width="48" height="48" alt="" role="presentation"/>
     </th>
     <td><strong>Reminders</strong></td>
-    <td>View and create reminders with customizable due dates, priorities, and alerts across different reminder lists.</td>
+    <td>View, create, update, and delete reminders with customizable due dates, priorities, and alerts across different reminder lists, including marking reminders as completed.</td>
   </tr>
   <tr>
     <th>

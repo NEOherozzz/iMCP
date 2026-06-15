@@ -20,6 +20,14 @@ final class RemindersService: Service {
         try await eventStore.requestFullAccessToReminders()
     }
 
+    /// Converts an `Ontology.PlanAction` for the given reminder and attaches its identifier
+    /// so clients can reference it in `reminders_update` / `reminders_delete`.
+    private func planAction(from reminder: EKReminder) -> PlanAction {
+        var result = PlanAction(reminder)
+        result.identifier = reminder.calendarItemIdentifier
+        return result
+    }
+
     var tools: [Tool] {
         Tool(
             name: "reminders_lists",
@@ -190,7 +198,7 @@ final class RemindersService: Service {
                 }
             }
 
-            return filteredReminders.map { PlanAction($0) }
+            return filteredReminders.map { self.planAction(from: $0) }
         }
 
         Tool(
@@ -296,7 +304,176 @@ final class RemindersService: Service {
             // Save the reminder
             try self.eventStore.save(reminder, commit: true)
 
-            return PlanAction(reminder)
+            return self.planAction(from: reminder)
+        }
+
+        Tool(
+            name: "reminders_update",
+            description:
+                "Update an existing reminder identified by its identifier. Only the properties you provide are changed; omitted properties are left untouched.",
+            inputSchema: .object(
+                properties: [
+                    "identifier": .string(
+                        description: "Unique identifier of the reminder to update (the `@id` returned by reminders_fetch)"
+                    ),
+                    "title": .string(),
+                    "due": .string(
+                        description:
+                            "New due date/time. If timezone is omitted, local time is assumed. Date-only uses local midnight.",
+                        format: .dateTime
+                    ),
+                    "clearDue": .boolean(
+                        description: "If true, remove the reminder's due date"
+                    ),
+                    "list": .string(
+                        description: "Move the reminder to the list with this name"
+                    ),
+                    "notes": .string(),
+                    "completed": .boolean(
+                        description: "Mark the reminder as completed (true) or incomplete (false)"
+                    ),
+                    "priority": .string(
+                        enum: EKReminderPriority.allCases.map { .string($0.stringValue) }
+                    ),
+                    "alarms": .array(
+                        description: "Minutes before due date to set alarms (replaces existing alarms)",
+                        items: .integer()
+                    ),
+                ],
+                required: ["identifier"],
+                additionalProperties: false
+            ),
+            annotations: .init(
+                title: "Update Reminder",
+                destructiveHint: true,
+                openWorldHint: false
+            )
+        ) { arguments in
+            try await self.activate()
+
+            guard EKEventStore.authorizationStatus(for: .reminder) == .fullAccess else {
+                log.error("Reminders access not authorized")
+                throw NSError(
+                    domain: "RemindersError",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Reminders access not authorized"]
+                )
+            }
+
+            guard case .string(let identifier) = arguments["identifier"],
+                let reminder = self.eventStore.calendarItem(withIdentifier: identifier)
+                    as? EKReminder
+            else {
+                throw NSError(
+                    domain: "RemindersError",
+                    code: 3,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "No reminder found with the specified identifier"
+                    ]
+                )
+            }
+
+            if case .string(let title) = arguments["title"] {
+                reminder.title = title
+            }
+
+            if case .bool(true) = arguments["clearDue"] {
+                reminder.dueDateComponents = nil
+            } else if case .string(let dueDateStr) = arguments["due"],
+                let parsedDueDate = ISO8601DateFormatter.parsedLenientISO8601Date(
+                    fromISO8601String: dueDateStr
+                )
+            {
+                let calendar = Calendar.current
+                let dueDate = calendar.normalizedStartDate(
+                    from: parsedDueDate.date,
+                    isDateOnly: parsedDueDate.isDateOnly
+                )
+                reminder.dueDateComponents = calendar.dateComponents(
+                    [.year, .month, .day, .hour, .minute, .second],
+                    from: dueDate
+                )
+            }
+
+            if case .string(let listName) = arguments["list"],
+                let matchingCalendar = self.eventStore.calendars(for: .reminder)
+                    .first(where: { $0.title.lowercased() == listName.lowercased() })
+            {
+                reminder.calendar = matchingCalendar
+            }
+
+            if case .string(let notes) = arguments["notes"] {
+                reminder.notes = notes
+            }
+
+            if case .bool(let completed) = arguments["completed"] {
+                reminder.isCompleted = completed
+            }
+
+            if case .string(let priorityStr) = arguments["priority"] {
+                reminder.priority = Int(EKReminderPriority.from(string: priorityStr).rawValue)
+            }
+
+            if case .array(let alarmMinutes) = arguments["alarms"] {
+                reminder.alarms = alarmMinutes.compactMap {
+                    guard case .int(let minutes) = $0 else { return nil }
+                    return EKAlarm(relativeOffset: TimeInterval(-minutes * 60))
+                }
+            }
+
+            try self.eventStore.save(reminder, commit: true)
+
+            return self.planAction(from: reminder)
+        }
+
+        Tool(
+            name: "reminders_delete",
+            description: "Delete a reminder identified by its identifier",
+            inputSchema: .object(
+                properties: [
+                    "identifier": .string(
+                        description: "Unique identifier of the reminder to delete (the `@id` returned by reminders_fetch)"
+                    )
+                ],
+                required: ["identifier"],
+                additionalProperties: false
+            ),
+            annotations: .init(
+                title: "Delete Reminder",
+                destructiveHint: true,
+                openWorldHint: false
+            )
+        ) { arguments in
+            try await self.activate()
+
+            guard EKEventStore.authorizationStatus(for: .reminder) == .fullAccess else {
+                log.error("Reminders access not authorized")
+                throw NSError(
+                    domain: "RemindersError",
+                    code: 1,
+                    userInfo: [NSLocalizedDescriptionKey: "Reminders access not authorized"]
+                )
+            }
+
+            guard case .string(let identifier) = arguments["identifier"],
+                let reminder = self.eventStore.calendarItem(withIdentifier: identifier)
+                    as? EKReminder
+            else {
+                throw NSError(
+                    domain: "RemindersError",
+                    code: 3,
+                    userInfo: [
+                        NSLocalizedDescriptionKey: "No reminder found with the specified identifier"
+                    ]
+                )
+            }
+
+            try self.eventStore.remove(reminder, commit: true)
+
+            return Value.object([
+                "success": .bool(true),
+                "identifier": .string(identifier),
+            ])
         }
     }
 }
